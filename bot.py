@@ -119,17 +119,23 @@ class Command(BaseFunctionWrapper):
     ---
     Wrapper for command handler functions
     """
-    def __init__(self, handler: Handler, description: str = "", prefixes: list[str] = None):
+    def __init__(self, handler: Handler, description: str = "", prefixes: list[str] = None, is_fallback: bool = False):
         super().__init__(handler, require_ctx=True)
         self.handler = handler
         self.description = description
+        self.is_fallback = is_fallback
         self.prefixes = list(prefixes) if prefixes is not None else [self.handler.__name__]
+        if self.is_fallback:
+            self.prefixes = []
+    
+    def __repr__(self):
+        return "<Command prefixes={} description={} is_fallback={}>".format(self.prefixes, self.description, self.is_fallback)
     
     @classmethod
-    def command(cls, *prefixes, description: str = None):
+    def command(cls, *prefixes, description: str = None, is_fallback: bool = False):
         "Decorator for command functions"
         def closure(func: Handler):
-            cmd = Command(func, description, prefixes)
+            cmd = Command(func, description, prefixes, is_fallback)
             return cmd
         return closure
 
@@ -283,6 +289,7 @@ class Bot:
         self.__case_sensitive = case_sensitive
         self.__default_help_command_index = -1
         self.__commands_used_prefixes = set()
+        self.__fallback_command = None
         self.__chat_session_listener_entries = []
         self.__chat_session_listener_removers = []
         self.__default_help_prefixes = default_help_prefixes if default_help_prefixes else ['help']
@@ -345,6 +352,10 @@ class Bot:
                         continue
                     return command(*args)
         
+        args = [ctx]
+        if self.__fallback_command.is_class_method:
+            args = [self]+args
+        return self.__fallback_command(*args)
     
     def set_chat_session(self, chat_session: Session):
         self.chat_session = chat_session
@@ -361,10 +372,15 @@ class Bot:
         if self.__default_help_command_index != -1 and any(prf in command.prefixes for prf in self.__default_help_prefixes):
             self.__commands.pop(self.__default_help_command_index)
             self.__default_help_command_index = -1
+        
         for pref in command.prefixes:
             if pref in self.__commands_used_prefixes:
                 raise RuntimeError("Prefix='{}' violated unique constraint. A prefix should only be used once!".format(pref))
             self.__commands_used_prefixes.add(pref)
+        if command.is_fallback:
+            if self.__fallback_command is not None:
+                raise RuntimeError("A bot should only have at most one fallback command!")
+            self.__fallback_command = command
         if not self.__case_sensitive:
             command.prefixes = [pref.lower() for pref in command.prefixes]
         self.__commands.append(command)

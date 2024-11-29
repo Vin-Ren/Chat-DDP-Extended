@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from threading import Lock
 from typing import Callable
 from functools import partial
 
@@ -110,6 +111,7 @@ class Session:
             'on_message': [],
             'on_reset': []
         }
+        self.sync_lock = Lock()
     
     def add_listener(self, event: str, listener: Callable[[Context], None], listener_initiator: Initiator = None, listener_name: str = None):
         "Adds a listener for the given event, listener, initiator, and name"
@@ -137,15 +139,16 @@ class Session:
     
     def send_message(self, message: Message):
         "Sends message and calls listener bound to event='on_message'"
-        # print("Sending message: {} with content: {}".format(message, message.content))
-        self._send_message(message)
-        for (listener_initiator, listener_name, listener) in self.listeners['on_message']:
-            try:
-                ctx = Context(self, message, listener_initiator, listener_name)
-                listener(ctx)
-            except Exception as exc:
-                print("Caught error while calling listeners for 'on_message'\n> Listener: {}\n> Error:{}".format(listener, exc))
-                raise exc
+        with self.sync_lock:
+            # print("Sending message: {} with content: {}".format(message, message.content))
+            self._send_message(message)
+            for (listener_initiator, listener_name, listener) in self.listeners['on_message']:
+                try:
+                    ctx = Context(self, message, listener_initiator, listener_name)
+                    listener(ctx)
+                except Exception as exc:
+                    print("Caught error while calling listeners for 'on_message'\n> Listener: {}\n> Error:{}".format(listener, exc))
+                    raise exc
     
     def reset(self):
         "Clears message and calls listener bound to event='on_reset'"

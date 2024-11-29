@@ -12,7 +12,6 @@ class NetBot(Bot):
     A simple bot to manage the networking interface
     /startserver
     /connect
-    /host (combines start server and connect)
     /disconnect
     /stopserver
     """
@@ -33,16 +32,12 @@ class NetBot(Bot):
         self.network_client = None
         self.chat_session.send_message(self.message_factory("You have been disconnected from the server!"))
     
-    @listener('on_message')
-    def on_user_message(self, ctx: Context):
-        if ctx.message.initiator == Initiator.User:
-            if ctx.message.content.startswith('/'):
-                return
-            # Pass this message to the network client
-            if self.network_client and self.network_client.authenticated:
-                self.network_client.broadcast(ctx.message)
+    @command(is_fallback=True)
+    def broadcaster(self, ctx: Context):
+        if self.network_client and self.network_client.authenticated:
+            self.network_client.broadcast(ctx.message)
     
-    @command('/start server', '/startserver', '/s', description="Starts a server instance for a chat session on the local network")
+    @command('/start server', '/startserver', '/ss', description="Starts a server instance for a chat session on the local network")
     def start_server(self, ctx: Context, port: int = 8080):
         if self.network_server is not None:
             return ctx.send_message(content="Server is already running at {}:{}".format(self.network_server.host, self.network_server.port))
@@ -55,7 +50,7 @@ class NetBot(Bot):
             self.network_server = None
             ctx.send_message(content="Something went wrong... :(")
     
-    @command('/kill server', '/killserver', description="Kills the current running server")
+    @command('/kill server', '/killserver', '/ks', description="Kills the current running server")
     def kill_server(self, ctx: Context):
         if self.network_server is None:
             return ctx.send_message(content="There is no server running")
@@ -64,7 +59,14 @@ class NetBot(Bot):
         self.network_server = None
         ctx.send_message(content="Server killed successfully.")
     
-    @command('/connect', '/connectto', '/c', description="Connects to an existing server")
+    @command('/ban', description="Bans a user from your hosted server. Note that this blocks their username and ip from being used again in your server.")
+    def ban_user(self, ctx: Context, *, username: str):
+        if self.network_server is None:
+            return ctx.send_message(content="You are not hosting a server")
+        self.network_server.ban_user(username)
+        ctx.send_message(content="Banned user {}".format(username))
+    
+    @command('/connect', '/con', '/c', description="Connects to an existing server")
     def connect_client(self, ctx: Context, address: str = 'localhost', port: int = 8080):
         if self.network_client:
             return ctx.send_message(content="You are already connected to a server! Disconnect first to connect to another server.")
@@ -78,7 +80,7 @@ class NetBot(Bot):
             traceback.print_exc()
             ctx.send_message(content="Something went wrong... :(")
 
-    @command('/disconnect', description="Disconnects from a server")
+    @command('/disconnect', '/dc', description="Disconnects from a server")
     def disconnect_client(self, ctx: Context):
         if self.network_client is None:
             return ctx.send_message(content="There's no connection to be disconnected!")
@@ -86,8 +88,6 @@ class NetBot(Bot):
         try:
             self.network_client.stop()
             self.network_client = None
-            ctx.send_message(content="Successfully disconnected client!")
         except:
             traceback.print_exc()
             ctx.send_message(content="Something went wrong... :(")
-

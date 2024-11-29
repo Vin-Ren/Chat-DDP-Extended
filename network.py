@@ -50,9 +50,7 @@ class Messenger:
             if self.pickleData:
                 return pickle.loads(data)
             return data.decode(self.ENCODING)
-        except ValueError as exc:
-            raise RuntimeError('You are trying to receive None.') from exc
-        except (ConnectionResetError, ConnectionAbortedError) as exc:
+        except (ConnectionResetError, ConnectionAbortedError, OSError, ValueError) as exc:
             raise DisconnectedError('Connection Disconnected.') from exc
 
 
@@ -60,11 +58,11 @@ class Server:
     def __init__(self, host='0.0.0.0', port=8080):
         self.host = host
         self.port = port
-        self.connected_clients = {} # username: address
-        self.reverse_connected_clients = {} # address: username
-        self.blacklisted_clients = []
-        self.blacklisted_addr = []
-        self.connected_sockets = []
+        self.connected_clients: dict[str, str] = {} # username: address
+        self.reverse_connected_clients: dict[str, str] = {} # address: username
+        self.blacklisted_users: list[str] = []
+        self.blacklisted_addr: list[str] = []
+        self.connected_sockets: dict[str, socket.socket] = {} # address: socket
         self.stop_server = False
         
         self.messenger = Messenger(True)
@@ -79,7 +77,7 @@ class Server:
     def local_ip_address(self):
         return socket.gethostbyname(socket.gethostname())
     
-    def on_sock_recv(self, clientsocket: socket.socket, client_addr: Tuple[str, int], data):
+    def on_sock_recv(self, client_addr: Tuple[str, int], data):
         if not isinstance(data, dict):
             return {'event': 'error', 'message': Message('Invalid data.')}
         # print(data)
@@ -88,62 +86,97 @@ class Server:
                 return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, "What is your name?")}
             if data['message'].content in self.connected_clients:
                 return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, "That name has already been used. What is your name?")}
+            if data['message'].content in self.blacklisted_users or client_addr[0] in self.blacklisted_addr:
+                return {'event': 'auth_reject', 'message': Message(Initiator.System, Initiator.System, "You have been banned.")}
             if data['message'].content:
                 self.connected_clients[data['message'].content] = client_addr
                 self.reverse_connected_clients[client_addr] = data['message'].content
+                
+                broadcast_message = Message(Initiator.System, Initiator.System, "{} Has joined the chat!".format(self.reverse_connected_clients[client_addr]))
+                self.broadcast(broadcast_message, skip_addrs=[client_addr], verify=False)
+                
                 return {'event': 'auth_success', 
                         'username': self.reverse_connected_clients[client_addr],
-                        'message': Message(Initiator.System, Initiator.System, 'Welcome to the chat session {}!'.format(self.reverse_connected_clients[client_addr]))}
+                        'message': Message(Initiator.System, Initiator.System, 'Welcome to the chat session {} ({} online)!'.format(self.reverse_connected_clients[client_addr], len(self.connected_clients)))}
         
         if not client_addr in self.reverse_connected_clients:
             return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System,'Hey! Who are you?')}
         
         if data['event'] == 'broadcast':
-            try:
-                assert isinstance(data['message'], Message), "Hmmm this is not supposed to happen, a malicious actor is at play here."
-                data['message'].initiator = Initiator.Network
-                data['message']._from = self.reverse_connected_clients[client_addr]
-                for socket in self.connected_sockets:
-                    if socket == clientsocket:
-                        continue
-                    self.messenger.send(socket, data)
-            except:
-                traceback.print_exc()
+            data['message'].initiator = Initiator.Network
+            data['message']._from = self.reverse_connected_clients[client_addr]
+            self.broadcast(data['message'], skip_addrs=[client_addr])
+
+    def broadcast(self, message: Message, skip_addrs: list[str] = None, verify: bool = True):
+        data = {'event': 'broadcast', 'message': message}
+        try:
+            if verify:
+                assert isinstance(message, Message), "Hmmm this is not supposed to happen, a malicious actor is at play here."
+            for _, addr in self.connected_clients.items():
+                if addr in skip_addrs:
+                    continue
+                try:
+                    self.messenger.send(self.connected_sockets[addr], data)
+                except (OSError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+        except:
+            traceback.print_exc()
     
     def client_socket_handler(self, clientsocket: socket.socket, address):
-        self.connected_sockets.append(clientsocket)
+        self.connected_sockets[address] = clientsocket
         while not self.stop_server:
             try:
                 content = self.messenger.recv(clientsocket)
-                reply = self.on_sock_recv(clientsocket, address, content)
+                reply = self.on_sock_recv(address, content)
                 self.messenger.send(clientsocket, reply)
             except DisconnectedError:
                 break
             except:
                 traceback.print_exc()
-        self.connected_sockets.remove(clientsocket)
-        username = self.reverse_connected_clients.pop(address)
-        self.connected_clients.pop(username)
+        
+        if address in self.connected_sockets:
+            self.connected_sockets.pop(address)
+        if address in self.reverse_connected_clients:
+            broadcast_message = Message(Initiator.System, Initiator.System, "{} Has left the chat.".format(self.reverse_connected_clients[address]))
+            self.broadcast(broadcast_message, skip_addrs=[address], verify=False)
+            username = self.reverse_connected_clients.pop(address)
+            self.connected_clients.pop(username)
     
     def _start_server(self):
         self.socket.listen()
         while not self.stop_server:
-            (clientsocket, address) = self.socket.accept()
-            clientsocket.settimeout(1000)
-            ct = Thread(target=self.client_socket_handler, args=(clientsocket,address), daemon=True)
-            ct.start()
+            try:
+                (clientsocket, address) = self.socket.accept()
+                clientsocket.settimeout(1000)
+                ct = Thread(target=self.client_socket_handler, args=(clientsocket,address), daemon=True)
+                ct.start()
+            except (OSError, ConnectionAbortedError, ConnectionResetError):
+                pass
     
     def start_server(self):
         self.server_runner.start()
     
     def kill_server(self):
         self.stop_server = True
-        self.server_runner.join(timeout=5)
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except:
+            pass
+        self.socket.close()
+        for socketclient in list(self.connected_sockets.values()):
+            try:
+                socketclient.shutdown(socket.SHUT_RDWR)
+            except:
+                pass
+            socketclient.close()
+        self.server_runner.join(timeout=2)
     
-    def ban_user(self, name):
-        self.blacklisted_clients.append(name)
-        if name in self.connected_clients:
-            self.disconnect(self.connected_clients[name])
+    def ban_user(self, username):
+        self.blacklisted_users.append(username)
+        if username in self.connected_clients:
+            self.blacklisted_addr.append(self.connected_clients[username][0])
+            self.connected_sockets[self.connected_clients[username]].close()
+        print("Banned user list={}\nBanned addresses list={}".format(self.blacklisted_users, self.blacklisted_addr))
 
 
 class Client:
@@ -169,28 +202,40 @@ class Client:
         
         def initial_response_handler(ctx: Context):
             nonlocal last_response
-            self.messenger.send(self.socket, {'event':'auth'})
-            last_response = self.messenger.recv(self.socket)
-            ctx.send_message(last_response['message'])
+            try:
+                self.messenger.send(self.socket, {'event':'auth'})
+                last_response = self.messenger.recv(self.socket)
+                ctx.send_message(last_response['message'])
+            except DisconnectedError:
+                return ctx.send_message(content="Something went wrong :(")
             return response_handler
         
         def response_handler(ctx: Context):
             nonlocal last_response
-            self.messenger.send(self.socket, {'event':'auth', 'message': ctx.message})
-            last_response = self.messenger.recv(self.socket)
-            ctx.send_message(last_response['message'])
-            if last_response['event'] == 'auth_success':
-                self.known_as = last_response['username']
-                self.authenticated = True
-                self.on_auth_handler(self)
-                self.socket_listener_runner.start()
-                return
+            try:
+                self.messenger.send(self.socket, {'event':'auth', 'message': ctx.message})
+                last_response = self.messenger.recv(self.socket)
+                ctx.send_message(last_response['message'])
+                if last_response['event'] != 'auth':
+                    if last_response['event'] == 'auth_reject':
+                        self.socket.close()
+                        self.on_disconnect_handler(self)
+                        return
+                    self.known_as = last_response['username']
+                    self.authenticated = True
+                    self.on_auth_handler(self)
+                    self.socket_listener_runner.start()
+                    return
+            except DisconnectedError:
+                return ctx.send_message(content="Something went wrong :(")
             return response_handler
         return initial_response_handler
     
     def stop(self):
         self.stop_client = True
-        self.socket_listener_runner.join(timeout=5)
+        self.socket.shutdown(socket.SHUT_RDWR)
+        self.socket.close()
+        self.socket_listener_runner.join(timeout=2)
     
     def socket_listener(self):
         while not self.stop_client:
@@ -210,6 +255,6 @@ class Client:
     def send(self, data):
         try:
             self.messenger.send(self.socket, data)
-        except (DisconnectedError, ConnectionResetError, ConnectionAbortedError):
-            self.on_disconnect_handler()
+        except DisconnectedError:
+            self.on_disconnect_handler(self)
 

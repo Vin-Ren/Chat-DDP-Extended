@@ -20,7 +20,7 @@ class ChatBot(Bot):
     def on_message(self, ctx: Context):
         print("[{}] Received a message from {}: {}".format(ctx.message.datetime.isoformat(), ctx.message._from, ctx.message.content))
     
-    @command("halo", "hai", "hello", "oi", "helo", "hi", "hei", description="Greet the bot")
+    @command("halo", "hai", "hello", "oi", "helo", "hi", "hei", "ola", "hola", description="Greet the bot")
     def greet_handler(self, ctx: Context):
         responses = ["Halo", "Apa kabar?", "Hari yang indah bukan?", "Hei!", "Hai!", "Salam!", "Bagaimanakah hidup?", "Bagaimana kabar Anda?"]
         response = random.choice(responses)
@@ -40,23 +40,9 @@ class ChatBot(Bot):
     def introduce_self(self, ctx: Context):
         ctx.send_message(content="Perkenalkan saya adalah ChatBot pendamping anda, peran saya dalam program ini adalah sebagai pelaksana perintah anda. Silahkan berikan perintah apapun!")
     
-    @command("beri lelucon", "buat lelucon", "berikan lelucon", "give joke", "gimme joke", description="Generate a random joke")
+    @command("beri lelucon", "buat lelucon", "berikan lelucon", "give joke", "gimme joke", description="Generate a random indonesian joke")
     def joke_handler(self, ctx: Context):
-        reply = "Sorry, something went wrong :("
-        try:
-            if random.randint(1,2) == 1:
-                resp = self.network_session.get(
-                    "https://v2.jokeapi.dev/joke/Any", 
-                    params={
-                        'blacklistFlags':'nsfw,religious,political,racist,sexist,explicit', 
-                        'type':'single'
-                })
-                if resp.ok:
-                    reply = resp.json()['joke']
-            else:
-                reply = random.choice(local_jokes)
-        except:
-            pass
+        reply = random.choice(local_jokes)
         ctx.send_message(content=reply)
     
     @command("tanya waktu", "tanya jam", "ini jam", "jam berapa", "ini jam berapa", description="Ask the current local time")
@@ -138,3 +124,7 @@ class ChatBot(Bot):
             'Cannot predict now.', 'Concentrate and ask again.', "Don't count on it.", 'My reply is no.',
             'My sources say no.', 'Outlook not so good.', 'Very doubtful.']
         ctx.send_message(content=f"Question: {question} \nAnswer: {random.choice(responses)}")
+    
+    @command(is_fallback=True)
+    def unrecognized_command_handler(self, ctx: Context):
+        ctx.send_message(content="Maaf saya tidak mengerti maksud anda")
