@@ -1,4 +1,5 @@
 from datetime import datetime
+import sys
 from tkinter import Tk, Widget, Frame, Button, Entry, Text, Menu, Scrollbar, LEFT, BOTH, X, Y, StringVar, END, NORMAL, DISABLED, INSERT
 from tkinter.messagebox import showinfo, showerror
 from functools import partial
@@ -216,7 +217,7 @@ class App:
             .add_command("Simpan Sesi", self.save_chat_session) \
             .add_command("Reset Sesi", self.reset_chat_session) \
             .add_seperator() \
-            .add_command("Keluar", exit) \
+            .add_command("Keluar", sys.exit) \
             .apply(self.menubar)
         
         self.theme_menu = PreparedMenu("Tema") \

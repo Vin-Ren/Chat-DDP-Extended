@@ -1,3 +1,4 @@
+import traceback
 from typing import Callable
 from chat import Context, Initiator, Message, Session
 from bot import Bot, command, listener
@@ -51,6 +52,7 @@ class NetBot(Bot):
             self.network_server.start_server()
             ctx.send_message(content="Server spun up successfully!\nTo connect to the server, run '/connect {} {}'".format(self.network_server.local_ip_address, self.network_server.port))
         except:
+            self.network_server = None
             ctx.send_message(content="Something went wrong... :(")
     
     @command('/kill server', '/killserver', description="Kills the current running server")
@@ -64,11 +66,28 @@ class NetBot(Bot):
     
     @command('/connect', '/connectto', '/c', description="Connects to an existing server")
     def connect_client(self, ctx: Context, address: str = 'localhost', port: int = 8080):
+        if self.network_client:
+            return ctx.send_message(content="You are already connected to a server! Disconnect first to connect to another server.")
         ctx.send_message(content="Connecting to server at [{}:{}]...".format(address, port))
         try:
             self.network_client = Client(address, port, self.on_broadcast_handler, self.on_auth_handler, self.on_disconnected_handler)
             response_handler = self.network_client.connect()
             return response_handler(ctx)
         except:
+            self.network_client = None
+            traceback.print_exc()
+            ctx.send_message(content="Something went wrong... :(")
+
+    @command('/disconnect', description="Disconnects from a server")
+    def disconnect_client(self, ctx: Context):
+        if self.network_client is None:
+            return ctx.send_message(content="There's no connection to be disconnected!")
+        ctx.send_message(content="Disconnecting from server...")
+        try:
+            self.network_client.stop()
+            self.network_client = None
+            ctx.send_message(content="Successfully disconnected client!")
+        except:
+            traceback.print_exc()
             ctx.send_message(content="Something went wrong... :(")
 

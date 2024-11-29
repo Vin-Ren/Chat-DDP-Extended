@@ -57,7 +57,7 @@ class Messenger:
 
 
 class Server:
-    def __init__(self, host='127.0.0.1', port=8080):
+    def __init__(self, host='0.0.0.0', port=8080):
         self.host = host
         self.port = port
         self.connected_clients = {} # username: address
@@ -156,8 +156,12 @@ class Client:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.authenticated = False
         self.known_as = None
+        self.stop_client = False
+        
         self.messenger = Messenger(pickleData=True)
         self.socket_listener_runner = Thread(target=self.socket_listener, daemon=True)
+        
+        self.socket.settimeout(1000)
 
     def connect(self):
         self.socket.connect((self.server_host, self.server_port))
@@ -184,8 +188,12 @@ class Client:
             return response_handler
         return initial_response_handler
     
+    def stop(self):
+        self.stop_client = True
+        self.socket_listener_runner.join(timeout=5)
+    
     def socket_listener(self):
-        while True:
+        while not self.stop_client:
             try:
                 data = self.messenger.recv(self.socket)
                 if data and data['event'] == 'broadcast':
@@ -194,7 +202,7 @@ class Client:
                 break
             except:
                 traceback.print_exc()
-        self.on_disconnect_handler()
+        self.on_disconnect_handler(self)
     
     def broadcast(self, message: Message):
         self.send({'event': 'broadcast', 'message': message})
