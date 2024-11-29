@@ -8,14 +8,21 @@ from typing import Callable, Tuple
 from chat import Initiator, Context, Message
 
 
-class DisconnectedError(ConnectionResetError, ConnectionAbortedError):
-    pass
+class DisconnectedError(ConnectionResetError, ConnectionAbortedError, OSError):
+    "Encapsulates errors caught by Messenger"
 
 
 # Ref: https://github.com/Vin-Ren/Synapsis/blob/82e7b2b20c07b42fb8611b214f7e4a838d8fe7cf/web/utils/message.py 
 # Public: https://github.com/Vin-Ren/Synapsis-Public
 # *With some adjustments
 class Messenger:
+    """
+    Messenger
+    ---
+    Abstracts the process of sending data through a socket by providing a 
+    simple wrapper for socket's receive and send method by supporting variating 
+    data length, encoding, and through pickle to conserve the transported data.
+    """
     HEADER_SIZE = 32
     ENCODING = 'UTF-8'
     PICKLE = True
@@ -25,7 +32,8 @@ class Messenger:
         self.pickleData = pickleData
         self.defaultMetadata = defaultMetadata or {}
 
-    def make(self, data, withMetadata=DEFAULT_MAKE_WITH_METADATA):
+    def pack(self, data, withMetadata=DEFAULT_MAKE_WITH_METADATA):
+        "Packs a given data to a transportable ready type in sockets, in this case, bytes."
         if withMetadata:
             _data = self.defaultMetadata
             _data.update(data)
@@ -38,14 +46,16 @@ class Messenger:
         header = "{}".format(len(data)).ljust(self.HEADER_SIZE, " ").encode(self.ENCODING)
         return header + data
 
-    def send(self, request, data):
-        return request.send(self.make(data))
+    def send(self, socket: socket.socket, data):
+        "Sends given data to the socket"
+        return socket.send(self.pack(data))
     
-    def recv(self, request):
+    def recv(self, socket: socket.socket):
+        "Receives a packed data from the given socket. It only tries to receive one packed data from the socket."
         try:
-            header_data = request.recv(self.HEADER_SIZE)
+            header_data = socket.recv(self.HEADER_SIZE)
             data_length = int(header_data.decode(self.ENCODING).strip())
-            data = request.recv(data_length)
+            data = socket.recv(data_length)
 
             if self.pickleData:
                 return pickle.loads(data)
@@ -55,15 +65,30 @@ class Messenger:
 
 
 class Server:
+    """
+    Server
+    ---
+    Handles authentication of clients and communication between clients as a chat server.
+    """
     def __init__(self, host='0.0.0.0', port=8080):
         self.host = host
         self.port = port
-        self.connected_clients: dict[str, str] = {} # username: address
-        self.reverse_connected_clients: dict[str, str] = {} # address: username
-        self.blacklisted_users: list[str] = []
-        self.blacklisted_addr: list[str] = []
-        self.connected_sockets: dict[str, socket.socket] = {} # address: socket
         self.stop_server = False
+        
+        self.connected_clients: dict[str, str] = {} 
+        "Maps username to address"
+        
+        self.reverse_connected_clients: dict[str, str] = {}
+        "Maps address to username"
+        
+        self.blacklisted_users: list[str] = []
+        "Blacklisted usernames"
+        
+        self.blacklisted_addrs: list[str] = []
+        "Blacklisted ip addresses"
+        
+        self.connected_sockets: dict[str, socket.socket] = {}
+        "Maps address to socket"
         
         self.messenger = Messenger(True)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -75,9 +100,11 @@ class Server:
     
     @property
     def local_ip_address(self):
+        "Gets ip address of the machine on the local network"
         return socket.gethostbyname(socket.gethostname())
     
     def on_sock_recv(self, client_addr: Tuple[str, int], data):
+        "Handles data/event received from clients and process them"
         if not isinstance(data, dict):
             return {'event': 'error', 'message': Message('Invalid data.')}
         # print(data)
@@ -86,18 +113,18 @@ class Server:
                 return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, "What is your name?")}
             if data['message'].content in self.connected_clients:
                 return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, "That name has already been used. What is your name?")}
-            if data['message'].content in self.blacklisted_users or client_addr[0] in self.blacklisted_addr:
+            if data['message'].content in self.blacklisted_users or client_addr[0] in self.blacklisted_addrs:
                 return {'event': 'auth_reject', 'message': Message(Initiator.System, Initiator.System, "You have been banned.")}
             if data['message'].content:
                 self.connected_clients[data['message'].content] = client_addr
                 self.reverse_connected_clients[client_addr] = data['message'].content
                 
-                broadcast_message = Message(Initiator.System, Initiator.System, "{} Has joined the chat!".format(self.reverse_connected_clients[client_addr]))
+                broadcast_message = Message(Initiator.System, Initiator.System, "{} has joined the chat! ({} user(s) online)".format(self.reverse_connected_clients[client_addr], len(self.connected_clients)))
                 self.broadcast(broadcast_message, skip_addrs=[client_addr], verify=False)
                 
                 return {'event': 'auth_success', 
                         'username': self.reverse_connected_clients[client_addr],
-                        'message': Message(Initiator.System, Initiator.System, 'Welcome to the chat session {} ({} online)!'.format(self.reverse_connected_clients[client_addr], len(self.connected_clients)))}
+                        'message': Message(Initiator.System, Initiator.System, 'Welcome to the chat session {}! ({} user(s) online)'.format(self.reverse_connected_clients[client_addr], len(self.connected_clients)))}
         
         if not client_addr in self.reverse_connected_clients:
             return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System,'Hey! Who are you?')}
@@ -108,6 +135,7 @@ class Server:
             self.broadcast(data['message'], skip_addrs=[client_addr])
 
     def broadcast(self, message: Message, skip_addrs: list[str] = None, verify: bool = True):
+        "Broadcasts a given message to all connected sockets except the ones listed in skip_addrs. if verify is True, runs assertion on the message."
         data = {'event': 'broadcast', 'message': message}
         try:
             if verify:
@@ -123,6 +151,7 @@ class Server:
             traceback.print_exc()
     
     def client_socket_handler(self, clientsocket: socket.socket, address):
+        "Handles a client socket across its lifetime, pooling for message, process it, and sends a response back"
         self.connected_sockets[address] = clientsocket
         while not self.stop_server:
             try:
@@ -137,12 +166,13 @@ class Server:
         if address in self.connected_sockets:
             self.connected_sockets.pop(address)
         if address in self.reverse_connected_clients:
-            broadcast_message = Message(Initiator.System, Initiator.System, "{} Has left the chat.".format(self.reverse_connected_clients[address]))
+            broadcast_message = Message(Initiator.System, Initiator.System, "{} has left the chat. ({} user(s) online)".format(self.reverse_connected_clients[address], len(self.connected_clients)))
             self.broadcast(broadcast_message, skip_addrs=[address], verify=False)
             username = self.reverse_connected_clients.pop(address)
             self.connected_clients.pop(username)
     
     def _start_server(self):
+        "Starts the socket server, this is the target of the server runner Thread"
         self.socket.listen()
         while not self.stop_server:
             try:
@@ -154,9 +184,11 @@ class Server:
                 pass
     
     def start_server(self):
+        "Starts the server runner thread"
         self.server_runner.start()
     
     def kill_server(self):
+        "Kills the running server"
         self.stop_server = True
         try:
             self.socket.shutdown(socket.SHUT_RDWR)
@@ -172,14 +204,20 @@ class Server:
         self.server_runner.join(timeout=2)
     
     def ban_user(self, username):
+        "Blacklists a username and their ip if they are currently connected"
         self.blacklisted_users.append(username)
         if username in self.connected_clients:
-            self.blacklisted_addr.append(self.connected_clients[username][0])
+            self.blacklisted_addrs.append(self.connected_clients[username][0])
             self.connected_sockets[self.connected_clients[username]].close()
-        print("Banned user list={}\nBanned addresses list={}".format(self.blacklisted_users, self.blacklisted_addr))
+        # print("Banned user list={}\nBanned addresses list={}".format(self.blacklisted_users, self.blacklisted_addrs))
 
 
 class Client:
+    """
+    Client
+    ---
+    Handles communication and authentication to the server
+    """
     def __init__(self, server_host, server_port, on_broadcast_handler: Callable = None, on_auth_handler: Callable = None, on_disconnect_handler: Callable = None):
         self.server_host = server_host
         self.server_port = server_port
@@ -197,6 +235,7 @@ class Client:
         self.socket.settimeout(1000)
 
     def connect(self):
+        "Connects to a chat server and attempt to authenticate"
         self.socket.connect((self.server_host, self.server_port))
         last_response = {'event':'auth'}
         
@@ -232,12 +271,14 @@ class Client:
         return initial_response_handler
     
     def stop(self):
+        "Stops and disconnects the client from a chat server"
         self.stop_client = True
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
         self.socket_listener_runner.join(timeout=2)
     
     def socket_listener(self):
+        "Starts the socket connected to a chat server to listen to events, target of the client thread runner after successful authentication."
         while not self.stop_client:
             try:
                 data = self.messenger.recv(self.socket)
@@ -250,11 +291,12 @@ class Client:
         self.on_disconnect_handler(self)
     
     def broadcast(self, message: Message):
+        "Broadcasts the given message by sending it to the chat server."
         self.send({'event': 'broadcast', 'message': message})
     
     def send(self, data):
+        "Sends the given data to the server"
         try:
             self.messenger.send(self.socket, data)
         except DisconnectedError:
             self.on_disconnect_handler(self)
-

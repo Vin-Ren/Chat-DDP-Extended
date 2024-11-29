@@ -21,6 +21,8 @@ class BaseFunctionWrapper:
     BaseFunctionWrapper
     ---
     Wraps handler functions to be compatible with the Bot class
+    
+    Abstracts argument inspection, argument validation, argument casting, and function calls 
     """
     def __init__(self, handler: Handler, require_ctx: bool = False) -> None:
         self.handler = handler
@@ -77,6 +79,7 @@ class BaseFunctionWrapper:
         return self.handler(*new_args, **new_kw)
     
     def process_args(self, *args):
+        "Processes given arguments to be compatible with the function's signature"
         new_args = []
         new_kw = {}
         current_idx = 0
@@ -222,6 +225,10 @@ class Bot:
                 ctx.send_message(content="Lower! ({} tries left)".format(tries_left))
             return response_handler
         return response_handler
+    
+    @bot.command(is_fallback=True)
+    def handle_invalid_command(ctx):
+        ctx.send_message(content="The given command is invalid")
     ```
     
     Example use with classes:
@@ -275,6 +282,10 @@ class Bot:
                     ctx.send_message(content="Lower! ({} tries left)".format(tries_left))
                 return response_handler
             return response_handler
+        
+        @command(is_fallback=True)
+        def handle_invalid_command(self, ctx):
+            ctx.send_message(content="The given command is invalid")
     
     bot = ChatBot(chat_session)
     ```
@@ -358,6 +369,7 @@ class Bot:
         return self.__fallback_command(*args)
     
     def set_chat_session(self, chat_session: Session):
+        "Changes the bot's chat session"
         self.chat_session = chat_session
         for remover in self.__chat_session_listener_removers: remover()
         
@@ -418,7 +430,7 @@ class Bot:
                     break
             if matched_command is None:
                 return ctx.send_message(content="Command not found!")
-            line = "Berikut ini adalah bantuan untuk {}:\n• ".format(command_prefix)
+            line = "Below is the information about {}:\n• ".format(command_prefix)
             line += " | ".join(command.prefixes)
             arguments = []
             for arg in command.parsed_args:
@@ -432,7 +444,7 @@ class Bot:
                 line+=", "+command.description
             return ctx.send_message(content=line)
         
-        help_message = "Dibawah ini adalah beberapa perintah yang tersedia untuk bot ini:\n"
+        help_message = "The following are commands supported by this bot:\n"
         for command in self.__commands:
             line = "• "
             prefixes = " | ".join(command.prefixes)

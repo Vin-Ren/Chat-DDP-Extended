@@ -11,5 +11,6 @@ class Section:
         self.section_frame_cnf.update(frame_cnf if frame_cnf is not None else {})
     
     def manage_geom(self):
+        "Manage geometries of all widgets which are contained in subclasses of Section"
         self.section_frame.grid(self.section_frame_cnf)
         return self

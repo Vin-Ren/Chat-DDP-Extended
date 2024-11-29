@@ -2,23 +2,20 @@ import random
 from datetime import datetime
 
 from chat import Session as ChatSession, Context, Initiator
-from requests import Session as NetworkSession
 from bot import Bot, command, listener
 from jokes import jokes as local_jokes
+
 
 class ChatBot(Bot):
     """
     ChatBot
     ---
-    A simple chatbot implementation Using Bot as its base
-    """
-    def __init__(self, chat_session: ChatSession = None, network_session: NetworkSession = None):
-        super().__init__(chat_session, initiator=Initiator.ChatBot, name=Initiator.ChatBot, case_sensitive=False)
-        self.network_session = network_session
+    A simple chatbot implementation Using Bot as its base.
     
-    @listener("on_message")
-    def on_message(self, ctx: Context):
-        print("[{}] Received a message from {}: {}".format(ctx.message.datetime.isoformat(), ctx.message._from, ctx.message.content))
+    Handles communication on the local chat session with the user.
+    """
+    def __init__(self, chat_session: ChatSession = None):
+        super().__init__(chat_session, initiator=Initiator.ChatBot, name=Initiator.ChatBot, case_sensitive=False)
     
     @command("halo", "hai", "hello", "oi", "helo", "hi", "hei", "ola", "hola", description="Greet the bot")
     def greet_handler(self, ctx: Context):

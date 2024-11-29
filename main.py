@@ -5,8 +5,6 @@ from tkinter.messagebox import showinfo, showerror
 from functools import partial
 from typing import Callable
 
-import requests
-
 from theme import ThemeManager
 from chat import Session as ChatSession, Initiator, Context
 from chatbot import ChatBot
@@ -17,6 +15,13 @@ from prepared_menu import PreparedMenu
 
 
 class ChatLogSection(Section):
+    """
+    ChatLogSection
+    ---
+    Wraps the entire chat log section in a nicely packed class. 
+    
+    Handles the chat display, scrolling, highlighting, and chat session save as well as reset
+    """
     def __init__(self, master: Tk | Widget, frame_cnf: dict = None, chat_session: ChatSession = None, show_time = False):
         super().__init__(master, frame_cnf)
         self.inner_frame = Frame(self.section_frame)
@@ -27,6 +32,8 @@ class ChatLogSection(Section):
         self.chat_log_content: dict[ChatSession, str] = {}
         self.chat_log_highlights: dict[ChatSession, tuple[str, str]] = {}
         self.chat_session_listener_removers = []
+        self.cached_highlight_theme = {}
+        "Maps initiator to its highlight color"
         
         self.chat_log = Text(self.inner_frame, wrap="word", width=25)
         self.chat_log_scrollbar = Scrollbar(self.inner_frame, command=self.chat_log.yview)
@@ -58,24 +65,25 @@ class ChatLogSection(Section):
         for (highlight_tag, start_idx, end_idx) in self.chat_log_highlights[self.chat_session]:
             self.chat_log.tag_add(highlight_tag, start_idx, end_idx)
         
+        self.chat_log.yview_moveto(1)
         self.chat_log.configure(state=DISABLED)
     
-    def save(self, filename: str, success_callback: Callable, failed_callback: Callable):
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(self.chat_log.get("1.0", END))
-            return success_callback()
-        return failed_callback()
-
     def on_theme_change(self, theme):
         for initiator in Initiator:
-            self.chat_log.tag_config("_from_highlight"+initiator.value, foreground=theme['_from_highlight'][initiator])
+            self.cached_highlight_theme[initiator] = {
+                'tagName': "_from_highlight_"+initiator.value, 
+                'foreground': theme['_from_highlight'][initiator]
+            }
+            self.chat_log.tag_configure(**self.cached_highlight_theme[initiator])
     
     def on_message(self, ctx: Context):
         self.chat_log.configure(state=NORMAL)
+        self.chat_log.mark_set(INSERT, END) # Fixes _from_highlight when part of text is selected
+        
         message = ctx.message
         prefix = "[{}] ".format(message.datetime.strftime("%H:%M:%S")) if self.show_time else ""
         prefix += "{}: ".format(message._from)
-        highlight_tag = "_from_highlight"+ctx.message.initiator.value
+        highlight_tag = "_from_highlight_"+ctx.message.initiator.value
         
         # Inserts the prefix and get the start and end index for the prefix
         start_idx = self.chat_log.index(INSERT)
@@ -83,14 +91,22 @@ class ChatLogSection(Section):
         end_idx = self.chat_log.index(INSERT)
         
         # Highlights it
+        self.chat_log.tag_configure(**self.cached_highlight_theme[ctx.message.initiator])
         self.chat_log.tag_add(highlight_tag, start_idx, end_idx)
         self.chat_log_highlights[self.chat_session].append((highlight_tag, start_idx, end_idx))
         
         self.chat_log.insert(END, message.content+'\n')
         self.chat_log_content[self.chat_session]+=prefix+message.content+'\n'
+        # self.chat_log.select
         
         self.chat_log.yview_moveto(1)
         self.chat_log.configure(state=DISABLED)
+    
+    def save(self, filename: str, success_callback: Callable, failed_callback: Callable):
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(self.chat_log.get("1.0", END))
+            return success_callback()
+        return failed_callback()
     
     def on_reset(self):
         self.chat_log.configure(state=NORMAL)
@@ -99,6 +115,12 @@ class ChatLogSection(Section):
 
 
 class ActionSection(Section):
+    """
+    ActionSection
+    ---
+    
+    Wraps basic commands in a row of command buttons as well as an additional special feature button.
+    """
     def __init__(self, master: Tk | Widget, frame_cnf: dict = None, chat_session: ChatSession = None, special_command: Callable = None):
         super().__init__(master, frame_cnf)
         self.centered_frame = Frame(self.section_frame, width=300)
@@ -111,6 +133,7 @@ class ActionSection(Section):
         self.time_button = Button(self.centered_frame, text="Tanya Jam", command=partial(self.send_message, "tanya jam"))
         self.math_button = Button(self.centered_frame, text="Soal Matematika", command=partial(self.send_message, "beri aku soal matematika"))
         self.xyz_button = Button(self.centered_frame, text="Connect to Network", command=self.special_command_wrapper)
+        "The special button"
         
         self.set_chat_session(chat_session)
     
@@ -145,6 +168,12 @@ class ActionSection(Section):
 
 
 class InputSection(Section):
+    """
+    InputSection
+    ---
+    
+    Wraps the Input entry widget and the send button
+    """
     def __init__(self, master: Tk | Widget, frame_cnf: dict = None, chat_session: ChatSession = None):
         frame_cnf = frame_cnf if frame_cnf is not None else {}
         super().__init__(master, frame_cnf)
@@ -197,7 +226,6 @@ class App:
         self.theme_manager = ThemeManager(self.window)
         
         # App Logic configuration
-        self.network_session = requests.Session()
         self.chat_sessions = [
             ChatSession(), # Local chat session
             ChatSession() # Network connected chat session
@@ -206,7 +234,7 @@ class App:
             Initiator.User,
             Initiator.User
         ]
-        self.chatbot = ChatBot(self.chat_sessions[0], self.network_session) # Only for the local session
+        self.chatbot = ChatBot(self.chat_sessions[0]) # Only for the local session
         self.netbot = NetBot(self.chat_sessions[1], self.handle_username_change)
         
         # Menus
@@ -242,6 +270,8 @@ class App:
         self.input_section = InputSection(self.window, {'row':2, 'pady':20}, self.chat_session) \
             .manage_geom()
         
+        # Final setups
+        self.special_command_setup()
         self.theme_manager.add_callback(self.chat_log_section.on_theme_change)
         self.theme_manager.cycle_theme(0)
     
@@ -255,7 +285,7 @@ class App:
     
     @username.setter
     def username(self, val):
-        self.usernames[0]=val
+        self.usernames[0] = val
     
     def run(self):
         self.window.mainloop()
@@ -263,11 +293,16 @@ class App:
     def special_command(self):
         self.chat_sessions.reverse()
         self.usernames.reverse()
-        self.chat_log_section.show_time^=1 # Flips everytime
+        
+        self.chat_log_section.show_time ^= True # Flips everytime
         self.chat_log_section.set_chat_session(self.chat_session)
         self.actions_section.set_chat_session(self.chat_session)
         self.input_section.set_chat_session(self.chat_session)
         self.input_section.set_name(self.username)
+    
+    def special_command_setup(self):
+        initial_prompt = "Welcome to the network enabled session!\nTo host a server, run '/startserver' to start a server followed by '/connect' to join the self-hosted server.\nTo join a server hosted by another user, run the command '/connect <IP> <PORT>' where IP and PORT are given by the server hoster.\nFor more commands, run '/help'\n"
+        self.chat_log_section.chat_log_content[self.chat_sessions[1]] = initial_prompt
     
     def handle_username_change(self, new_name):
         self.username = new_name
