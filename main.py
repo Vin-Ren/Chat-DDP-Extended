@@ -271,7 +271,7 @@ class App:
             .manage_geom()
         
         # Final setups
-        self.special_command_setup()
+        self.chat_log_setup()
         self.theme_manager.add_callback(self.chat_log_section.on_theme_change)
         self.theme_manager.cycle_theme(0)
     
@@ -300,9 +300,17 @@ class App:
         self.input_section.set_chat_session(self.chat_session)
         self.input_section.set_name(self.username)
     
-    def special_command_setup(self):
-        initial_prompt = "Welcome to the network enabled session!\nTo host a server, run '/startserver' to start a server followed by '/connect' to join the self-hosted server.\nTo join a server hosted by another user, run the command '/connect <IP> <PORT>' where IP and PORT are given by the server hoster.\nFor more commands, run '/help'\n"
+    def chat_log_setup(self):
+        # Initial prompt of main chat session
+        initial_prompt = "Halo! Apakah anda perlu sesuatu? Untuk bantuan penggunaan, silahkan ketik 'help' tanpa tanda petik.\n"
+        self.chat_log_section.chat_log_content[self.chat_sessions[0]] = initial_prompt
+        
+        # Initial prompt of secondary network enabled chat session
+        initial_prompt = "Welcome to the network enabled session (English only)!\nTo host a server, run '/startserver' to start a server followed by '/connect' to join the self-hosted server.\nTo join a server hosted by another user, run the command '/connect <IP> <PORT>' where IP and PORT are given by the server hoster.\nFor more commands, run '/help' without quotes.\n"
         self.chat_log_section.chat_log_content[self.chat_sessions[1]] = initial_prompt
+        
+        # Refresh chat log section
+        self.chat_log_section.set_chat_session(self.chat_session)
     
     def handle_username_change(self, new_name):
         self.username = new_name
