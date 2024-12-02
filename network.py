@@ -21,7 +21,7 @@ class Messenger:
     ---
     Abstracts the process of sending data through a socket by providing a 
     simple wrapper for socket's receive and send method by supporting variating 
-    data length, encoding, and through pickle to conserve the transported data.
+    data length, encoding, and pickle to convert and conserve the transported data.
     """
     HEADER_SIZE = 32
     ENCODING = 'UTF-8'
@@ -51,7 +51,7 @@ class Messenger:
         return socket.send(self.pack(data))
     
     def recv(self, socket: socket.socket):
-        "Receives a packed data from the given socket. It only tries to receive one packed data from the socket."
+        "Receives a packed data from the given socket. Mind that this only tries to receive one packed data from the socket."
         try:
             header_data = socket.recv(self.HEADER_SIZE)
             data_length = int(header_data.decode(self.ENCODING).strip())
@@ -105,20 +105,22 @@ class Server:
     
     def on_sock_recv(self, client_addr: Tuple[str, int], data):
         "Handles data/event received from clients and process them"
-        if not isinstance(data, dict):
+        if not isinstance(data, dict): # If received data is not a dictionary object, then invalidate it.
             return {'event': 'error', 'message': Message('Invalid data.')}
         # print(data)
-        if data['event'] == 'auth':
-            if data.get('message') is None:
+        if data['event'] == 'auth': # If the client is attempting authentication, then try to authenticate it. 
+            if data.get('message') is None: # No message received yet, prompt for one
                 return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, "What is your name?")}
-            if data['message'].content in self.connected_clients:
+            if data['message'].content in self.connected_clients: # Duplicate username
                 return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, "That name has already been used. What is your name?")}
-            if data['message'].content in self.blacklisted_users or client_addr[0] in self.blacklisted_addrs:
+            if data['message'].content in self.blacklisted_users or client_addr[0] in self.blacklisted_addrs: # Banned users
                 return {'event': 'auth_reject', 'message': Message(Initiator.System, Initiator.System, "You have been banned.")}
-            if data['message'].content:
+            if data['message'].content: # Assigns a username to the requester client
+                # Authenticate the user
                 self.connected_clients[data['message'].content] = client_addr
                 self.reverse_connected_clients[client_addr] = data['message'].content
                 
+                # Broadcasts the entry of the new user to the chat
                 broadcast_message = Message(Initiator.System, Initiator.System, "{} has joined the chat! ({} user(s) online)".format(self.reverse_connected_clients[client_addr], len(self.connected_clients)))
                 self.broadcast(broadcast_message, skip_addrs=[client_addr], verify=False)
                 
@@ -126,10 +128,10 @@ class Server:
                         'username': self.reverse_connected_clients[client_addr],
                         'message': Message(Initiator.System, Initiator.System, 'Welcome to the chat session {}! ({} user(s) online)'.format(self.reverse_connected_clients[client_addr], len(self.connected_clients)))}
         
-        if not client_addr in self.reverse_connected_clients:
-            return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System,'Hey! Who are you?')}
+        if not client_addr in self.reverse_connected_clients: # Unauthenticated user tries to send an event other than auth
+            return {'event': 'auth', 'message': Message(Initiator.System, Initiator.System, 'Hey! Who are you?')}
         
-        if data['event'] == 'broadcast':
+        if data['event'] == 'broadcast': # Handles broadcast event from authenticated users
             data['message'].initiator = Initiator.Network
             data['message']._from = self.reverse_connected_clients[client_addr]
             self.broadcast(data['message'], skip_addrs=[client_addr])
@@ -166,7 +168,7 @@ class Server:
         if address in self.connected_sockets:
             self.connected_sockets.pop(address)
         if address in self.reverse_connected_clients:
-            broadcast_message = Message(Initiator.System, Initiator.System, "{} has left the chat. ({} user(s) online)".format(self.reverse_connected_clients[address], len(self.connected_clients)))
+            broadcast_message = Message(Initiator.System, Initiator.System, "{} has left the chat. ({} user(s) online)".format(self.reverse_connected_clients[address], len(self.connected_clients)-1))
             self.broadcast(broadcast_message, skip_addrs=[address], verify=False)
             username = self.reverse_connected_clients.pop(address)
             self.connected_clients.pop(username)
@@ -209,7 +211,6 @@ class Server:
         if username in self.connected_clients:
             self.blacklisted_addrs.append(self.connected_clients[username][0])
             self.connected_sockets[self.connected_clients[username]].close()
-        # print("Banned user list={}\nBanned addresses list={}".format(self.blacklisted_users, self.blacklisted_addrs))
 
 
 class Client:
@@ -240,6 +241,7 @@ class Client:
         last_response = {'event':'auth'}
         
         def initial_response_handler(ctx: Context):
+            "Prompts server for input prompt and use ctx to show it to the user"
             nonlocal last_response
             try:
                 self.messenger.send(self.socket, {'event':'auth'})
@@ -250,6 +252,7 @@ class Client:
             return response_handler
         
         def response_handler(ctx: Context):
+            "Handles interaction between user and the server while authentication is ongoing"
             nonlocal last_response
             try:
                 self.messenger.send(self.socket, {'event':'auth', 'message': ctx.message})
