@@ -4,3 +4,6 @@ build/
 dist/
 *.zip
 *.spec
+
+app_packager.py
+Dockerfile.*
