@@ -12,7 +12,7 @@ This app also provides a simple scalable framework that is based on discord.py t
 # Windows
 python main.py 
 
-# Unix-like systems 
+# Unix-based systems 
 python3 main.py
 ```
 
@@ -34,4 +34,13 @@ pip install pyinstaller
 
 # Unix-based systems
 pip3 install pyinstaller
+```
+
+After the dependencies are satistied, run:
+```sh
+# Windows
+python app_packager.py
+
+# Unix-based systems
+python3 app_packager.py
 ```
