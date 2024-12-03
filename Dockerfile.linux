@@ -1,0 +1,44 @@
+# Dockerfile.linux
+
+# Use a stable Ubuntu version with older glibc
+FROM ubuntu:20.04  
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY . .
+
+# Set the time zone to Asia/Hovd
+ENV TZ=Asia/Hovd
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install necessary packages
+RUN apt-get update && \
+    apt-get install -y software-properties-common wget && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y python3.12 python3.12-dev python3.12-distutils python3.12-venv python3.12-tk tzdata binutils && \
+    ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
+    dpkg-reconfigure -f noninteractive tzdata && \
+    # Install pip using get-pip.py
+    wget https://bootstrap.pypa.io/get-pip.py && \
+    python3.12 get-pip.py && \
+    rm get-pip.py && \
+    # Upgrade pip, setuptools, and wheel
+    python3.12 -m pip install --upgrade pip setuptools wheel && \
+    # Install pyinstaller using the correct Python version
+    python3.12 -m pip install pyinstaller && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Use --name to specify the output file name
+RUN python3.12 -m PyInstaller --onefile --name Chat-DDP-Extended-Linux-amd64 --windowed main.py
+
+# Copy the built executable to a shared volume
+VOLUME /output
+
+# Command to copy the built executable to the output directory
+CMD ["cp", "dist/Chat-DDP-Extended-Linux-amd64", "/output/Chat-DDP-Extended-Linux-amd64"]
