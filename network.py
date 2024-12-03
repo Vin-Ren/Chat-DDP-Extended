@@ -165,6 +165,7 @@ class Server:
             except:
                 traceback.print_exc()
         
+        # Handles the disconnection proccess of clientsocket
         if address in self.connected_sockets:
             self.connected_sockets.pop(address)
         if address in self.reverse_connected_clients:
@@ -203,7 +204,8 @@ class Server:
             except:
                 pass
             socketclient.close()
-        self.server_runner.join(timeout=2)
+        if self.server_runner.is_alive():
+            self.server_runner.join(timeout=2)
     
     def ban_user(self, username):
         "Blacklists a username and their ip if they are currently connected"
@@ -217,7 +219,7 @@ class Client:
     """
     Client
     ---
-    Handles communication and authentication to the server
+    Handles communication and authentication between the server and the client
     """
     def __init__(self, server_host, server_port, on_broadcast_handler: Callable = None, on_auth_handler: Callable = None, on_disconnect_handler: Callable = None):
         self.server_host = server_host
@@ -278,7 +280,9 @@ class Client:
         self.stop_client = True
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
-        self.socket_listener_runner.join(timeout=2)
+        if self.socket_listener_runner.is_alive():
+            print(self.socket_listener_runner.is_alive())
+            self.socket_listener_runner.join(timeout=2)
     
     def socket_listener(self):
         "Starts the socket connected to a chat server to listen to events, target of the client thread runner after successful authentication."

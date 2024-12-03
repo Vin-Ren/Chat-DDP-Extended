@@ -32,7 +32,8 @@ class Message:
         self.timestamp = timestamp if timestamp is not None else datetime.now().timestamp()
     
     def __str__(self):
-        return "<Message initiator={} _from={} content='{}' at={}>".format(self.initiator, self._from, self.content[:50], self.datetime.isoformat())
+        truncated_content = self.content[:50]+'...' if len(self.content)>50 else self.content
+        return "<Message initiator={} _from={} content={} at={}>".format(self.initiator, self._from, truncated_content.__repr__(), self.datetime.isoformat())
     
     def __repr__(self):
         return self.__str__()
@@ -140,11 +141,12 @@ class Session:
     def send_message(self, message: Message):
         "Sends message and calls listener bound to event='on_message'"
         with self.sync_lock:
-            # print("Sending message: {} with content: {}".format(message, message.content))
+            # print("Sending message: {}".format(message))
             self._send_message(message)
             for (listener_initiator, listener_name, listener) in self.listeners['on_message']:
                 try:
                     ctx = Context(self, message, listener_initiator, listener_name)
+                    # print(listener_initiator, listener_name, listener)
                     listener(ctx)
                 except Exception as exc:
                     print("Caught error while calling listeners for 'on_message'\n> Listener: {}\n> Error:{}".format(listener, exc))
@@ -159,4 +161,3 @@ class Session:
             except Exception as exc:
                 print("Caught error while calling listeners for 'on_reset'\n> Listener: {}\n> Error:{}".format(listener, exc))
                 raise exc
-

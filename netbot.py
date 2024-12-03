@@ -23,6 +23,17 @@ class NetBot(Bot):
         self.network_client = None
         self.on_username_change = on_username_change or (lambda *_:None)
     
+    def reset_state(self):
+        self.chat_session.send_message(self.message_factory("Resetting session, please wait..."))
+        super().reset_state()
+        if self.network_client is not None:
+            self.network_client.stop()
+            self.network_client = None
+        if self.network_server is not None:
+            self.network_server.kill_server()
+            self.network_server = None
+        return 
+    
     def on_broadcast_handler(self, msg: Message):
         "Handles message from the connected server and sends it to the local chat session"
         self.chat_session.send_message(msg)
@@ -34,7 +45,7 @@ class NetBot(Bot):
     def on_disconnected_handler(self, client: Client):
         "Handles on disconnect from chat server"
         self.network_client = None
-        self.chat_session.send_message(self.message_factory("You have been disconnected from the server!"))
+        self.chat_session.send_message(self.message_factory("You have been disconnected from the server at {}:{}.".format(client.server_host, client.server_port)))
     
     @command(is_fallback=True)
     def broadcaster(self, ctx: Context):
@@ -48,10 +59,11 @@ class NetBot(Bot):
             return ctx.send_message(content="Server is already running at {}:{}".format(self.network_server.host, self.network_server.port))
         ctx.send_message(content="Initializing server...")
         try:
-            self.network_server = Server()
+            self.network_server = Server(port=port)
             self.network_server.start_server()
             ctx.send_message(content="Server spun up successfully!\nServer is running at {0}:{1}\nTo connect to the server, run '/connect {0} {1}' on the client machine.".format(self.network_server.local_ip_address, self.network_server.port))
         except:
+            traceback.print_exc()
             self.network_server = None
             ctx.send_message(content="Something went wrong... :(")
     
@@ -72,7 +84,7 @@ class NetBot(Bot):
         ctx.send_message(content="Banned user {}".format(username))
     
     @command('/connect', '/con', '/c', description="Connects to an existing server at given address and port. address defaults to localhost and port defaults to 8080.")
-    def connect_client(self, ctx: Context, address: str = 'localhost', port: int = 8080):
+    def connect_client(self, ctx: Context, address: str = '127.0.0.1', port: int = 8080):
         if self.network_client:
             return ctx.send_message(content="You are already connected to a server! Disconnect first to connect to another server.")
         ctx.send_message(content="Connecting to server at {}:{} ...".format(address, port))
@@ -81,8 +93,8 @@ class NetBot(Bot):
             response_handler = self.network_client.connect()
             return response_handler(ctx)
         except:
-            self.network_client = None
             traceback.print_exc()
+            self.network_client = None
             ctx.send_message(content="Something went wrong... :(")
 
     @command('/disconnect', '/dc', description="Disconnects client from a server")

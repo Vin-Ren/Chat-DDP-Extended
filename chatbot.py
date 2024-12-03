@@ -85,7 +85,7 @@ class ChatBot(Bot):
         ctx.send_message(content='You said: {}'.format(message))
     
     # Continuous command flow example
-    @command('guess game', description="Guess a number within the allocated tries to win. Configure number range through lowerbound and higherbound")
+    @command('guess game', 'guessgame', description="Guess a number within the allocated tries to win. Configure number range through lowerbound and higherbound")
     def guess_game(self, ctx, lowerbound: int = 1, higherbound: int = 100):
         answer = random.randint(lowerbound, higherbound)
         tries_left = 5
@@ -106,9 +106,9 @@ class ChatBot(Bot):
                 return
             
             if num < answer:
-                ctx.send_message(content="Higher! ({} tries left)".format(tries_left))
+                ctx.send_message(content="Wrong answer, guess higher! ({} tries left)".format(tries_left))
             if num > answer:
-                ctx.send_message(content="Lower! ({} tries left)".format(tries_left))
+                ctx.send_message(content="Wrong answer, guess lower! ({} tries left)".format(tries_left))
             return response_handler
         return response_handler
     

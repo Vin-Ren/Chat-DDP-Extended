@@ -1,6 +1,6 @@
 import traceback
 from typing import Callable, Optional
-from queue import Queue
+from queue import Empty, Queue
 from threading import Thread
 from functools import partial
 from inspect import getfullargspec
@@ -300,10 +300,12 @@ class Bot:
         self.__case_sensitive = case_sensitive
         self.__default_help_command_index = -1
         self.__commands_used_prefixes = set()
-        self.__fallback_command = None
         self.__chat_session_listener_entries = []
         self.__chat_session_listener_removers = []
         self.__default_help_prefixes = default_help_prefixes if default_help_prefixes else ['help']
+        
+        self.__fallback_command = Command(self.__class__._default_fallback_command, "Default fallback command", is_fallback=True)
+        self.__using_default_fallback_command = True
         
         for entry in self.__class__.__dict__.values():
             if isinstance(entry, Command):
@@ -311,9 +313,9 @@ class Bot:
             if isinstance(entry, Listener):
                 self.add_listener(entry)
         
-        if not 'help' in self.__commands_used_prefixes:
+        if not any(prf in self.__commands_used_prefixes for prf in self.__default_help_prefixes):
             self.__default_help_command_index = len(self.__commands)
-            self.__commands.append(Command(self.__class__._help, "Shows this help message or a help message for a specific command", self.__default_help_prefixes))
+            self.__commands.append(Command(self.__class__._default_help_command, "Shows this help message or a help message for a specific command", self.__default_help_prefixes))
         
         self.__internal_add_listener('on_message', self.__internal_message_queue_inserter, initiator, name)
         
@@ -335,8 +337,10 @@ class Bot:
         "Process message from an internal message queue"
         while True:
             try:
-                ctx = self.__internal_message_queue.get()
+                ctx = self.__internal_message_queue.get(timeout=1)
                 self.__internal_commands_handler(ctx)
+            except Empty:
+                pass
             except Exception:
                 print(traceback.format_exc())
     
@@ -363,10 +367,15 @@ class Bot:
                         continue
                     return command(*args)
         
-        args = [ctx]
+        args = [ctx] + ctx.message.content.split()
         if self.__fallback_command.is_class_method:
             args = [self]+args
         return self.__fallback_command(*args)
+    
+    def reset_state(self):
+        "Resets the current state of the bot."
+        self.__internal_current_command_flow = None
+        self.__internal_message_queue = Queue()
     
     def set_chat_session(self, chat_session: Session):
         "Changes the bot's chat session"
@@ -390,8 +399,9 @@ class Bot:
                 raise RuntimeError("Prefix='{}' violated unique constraint. A prefix should only be used once!".format(pref))
             self.__commands_used_prefixes.add(pref)
         if command.is_fallback:
-            if self.__fallback_command is not None:
+            if self.__fallback_command is not None and not self.__using_default_fallback_command:
                 raise RuntimeError("A bot should only have at most one fallback command!")
+            self.__using_default_fallback_command = False
             self.__fallback_command = command
         if not self.__case_sensitive:
             command.prefixes = [pref.lower() for pref in command.prefixes]
@@ -420,7 +430,7 @@ class Bot:
             return listener_obj
         return closure
     
-    def _help(self, ctx: Context, *, command_prefix):
+    def _default_help_command(self, ctx: Context, *, command_prefix):
         "A simple help command"
         if command_prefix:
             matched_command = None
@@ -465,6 +475,10 @@ class Bot:
             help_message+=line+'\n'
         help_message+="Note: Arguments enclosed with <> are required and arguments enclosed with [] are optional.\n"
         ctx.send_message(content=help_message.strip())
+    
+    def _default_fallback_command(self, ctx: Context, *, command_str: str):
+        ctx.send_message(content="No such command found")
+        raise ValueError("Received unrecognizable command={!r}".format(command_str))
 
 
 command = Command.command

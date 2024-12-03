@@ -1,8 +1,10 @@
 from datetime import datetime
 import sys
+from threading import Thread
 from tkinter import Tk, Widget, Frame, Button, Entry, Text, Menu, Scrollbar, LEFT, BOTH, X, Y, StringVar, END, NORMAL, DISABLED, INSERT
 from tkinter.messagebox import showinfo, showerror
 from functools import partial
+import traceback
 from typing import Callable
 
 from theme import ThemeManager
@@ -48,6 +50,7 @@ class ChatLogSection(Section):
         return super().manage_geom()
     
     def set_chat_session(self, chat_session: ChatSession):
+        "Updates the chat session which the object is bound to, updates listeners, reconfiguring chat log content and highlights."
         self.on_reset()
         for remover in self.chat_session_listener_removers: remover()
         
@@ -77,6 +80,7 @@ class ChatLogSection(Section):
             self.chat_log.tag_configure(**self.cached_highlight_theme[initiator])
     
     def on_message(self, ctx: Context):
+        "Inserts message entries based on bound chat session, then highlight the sender's name and save the entry to be reused upon chat session switching"
         self.chat_log.configure(state=NORMAL)
         self.chat_log.mark_set(INSERT, END) # Fixes _from_highlight when part of text is selected
         
@@ -103,12 +107,14 @@ class ChatLogSection(Section):
         self.chat_log.configure(state=DISABLED)
     
     def save(self, filename: str, success_callback: Callable, failed_callback: Callable):
+        "Saves the content of the current bound session to a file"
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(self.chat_log.get("1.0", END))
             return success_callback()
         return failed_callback()
     
     def on_reset(self):
+        "Resets the current bound session's log on this chat log"
         self.chat_log.configure(state=NORMAL)
         self.chat_log.delete("1.0", END)
         self.chat_log.configure(state=DISABLED)
@@ -150,7 +156,8 @@ class ActionSection(Section):
         self.messenger = self.chat_session.get_messenger(Initiator.User, Initiator.User)
     
     def special_command_wrapper(self):
-        self.xyz_is_local^=True
+        "Changes the state of actions button and calls the special command handler"
+        self.xyz_is_local ^= True
         if self.xyz_is_local:
             self.xyz_button.config(text="Connect to network")
             self.joke_button.config(state=NORMAL)
@@ -237,7 +244,7 @@ class App:
         self.chatbot = ChatBot(self.chat_sessions[0]) # Only for the local session
         self.netbot = NetBot(self.chat_sessions[1], self.handle_username_change)
         
-        # Menus
+        # Menus configuration
         self.menubar = Menu(self.window, tearoff=0)
         self.window.config(menu=self.menubar)
         
@@ -260,7 +267,7 @@ class App:
             .add_command("Bantuan", self.show_help) \
             .apply(self.menubar)
         
-        # Sections
+        # Sections configuration
         self.chat_log_section = ChatLogSection(self.window, {'row':0}, self.chat_session) \
             .manage_geom()
         
@@ -291,6 +298,7 @@ class App:
         self.window.mainloop()
     
     def special_command(self):
+        "Runs everytime the special command button is pressed"
         self.chat_sessions.reverse()
         self.usernames.reverse()
         
@@ -322,8 +330,17 @@ class App:
         failed_callback = partial(showerror, "Gagal", "Gagal menulis percakapan pada file '{}'".format(filename))
         self.chat_log_section.save(filename, success_callback, failed_callback)
     
-    def reset_chat_session(self):
+    def _reset_chat_session(self):
+        "Resets chat session and their respective bots"
+        if self.chat_session == self.chatbot.chat_session:
+            self.chatbot.reset_state()
+        if self.chat_session == self.netbot.chat_session:
+            self.netbot.reset_state()
         self.chat_session.reset()
+    
+    def reset_chat_session(self):
+        "A wrapper for the reset function, avoiding blocking issues"
+        Thread(target=self._reset_chat_session).start()
     
     def show_about(self):
         showinfo("Tentang Aplikasi", "Aplikasi Chatbot ini dikembangkan oleh Vincent Valentino Oei dari Fasilkom UI di tahun 2024.\nSemoga aplikasi ini dapat menjadi pembelajaran yang bermanfaat, have a great day!")
@@ -333,5 +350,9 @@ class App:
 
 
 if __name__ == '__main__':
-    app = App()
-    app.run()
+    print("Exception showing up here is for debugging purposes.")
+    try:
+        app = App()
+        app.run()
+    except:
+        traceback.print_exc()
