@@ -35,7 +35,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Use --name to specify the output file name
-RUN python3.12 -m PyInstaller --onefile --name Chat-DDP-Extended-Linux-amd64 --windowed main.py
+RUN python3.12 -m PyInstaller --onefile --add-data 'icon.png:.' --icon icon.ico --name Chat-DDP-Extended-Linux-amd64 --windowed main.py
 
 # Copy the built executable to a shared volume
 VOLUME /output

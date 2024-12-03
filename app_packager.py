@@ -21,7 +21,7 @@ def main():
     output_dir = 'dist'
 
     print("Building for windows...")
-    subprocess.run(["pyinstaller", '--name', 'Chat-DDP-Extended-Windows-amd64', '--onefile', '--clean', '--windowed', 'main.py'], check=True)
+    subprocess.run(["pyinstaller", '--onefile', '--clean', '--windowed', '--add-data', 'icon.png:.', '--icon', 'icon.ico', '--name', 'Chat-DDP-Extended-Windows-amd64', 'main.py'], check=True)
     
     # Build and package for Linux
     build_and_package_docker('Dockerfile.linux', 'chat-ddp-extended-linux', output_dir)

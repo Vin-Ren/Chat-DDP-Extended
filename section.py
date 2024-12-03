@@ -3,7 +3,9 @@ from tkinter import Tk, Widget, Frame, NSEW
 
 class Section:
     """
-    A simple HTML's div imitation for Tkinter
+    Section
+    ---
+    A simple HTML's div imitation for Tkinter. Manages widget placement primitively.
     """
     def __init__(self, master: Tk | Widget, frame_cnf: dict = None):
         self.section_frame = Frame(master)

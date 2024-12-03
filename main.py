@@ -1,12 +1,14 @@
 from datetime import datetime
+import os
 import sys
 from threading import Thread
-from tkinter import Tk, Widget, Frame, Button, Entry, Text, Menu, Scrollbar, LEFT, BOTH, X, Y, StringVar, END, NORMAL, DISABLED, INSERT
+from tkinter import PhotoImage, Tk, Widget, Frame, Button, Entry, Text, Menu, Scrollbar, LEFT, BOTH, X, Y, StringVar, END, NORMAL, DISABLED, INSERT
 from tkinter.messagebox import showinfo, showerror
 from functools import partial
 import traceback
 from typing import Callable
 
+from utils import get_filename_in_cwd
 from theme import ThemeManager
 from chat import Session as ChatSession, Initiator, Context
 from chatbot import ChatBot
@@ -225,10 +227,15 @@ class App:
     def __init__(self):
         # Global configurations
         self.window = Tk()
+        self.window.title("Chat-DDP-Extended")
+        self.window.iconphoto(True, PhotoImage(file=get_filename_in_cwd("icon.png")))
+        
         self.window.geometry("550x500")
         self.window.minsize(550,400)
+        
         self.window.grid_columnconfigure(0, weight=1)  # Allow the column to expand
         self.window.grid_rowconfigure(0, weight=1)
+        
         
         self.theme_manager = ThemeManager(self.window)
         
@@ -350,7 +357,7 @@ class App:
 
 
 if __name__ == '__main__':
-    print("Exception showing up here is for debugging purposes.")
+    print("Exceptions showing up here is for debugging purposes.")
     try:
         app = App()
         app.run()
