@@ -26,15 +26,15 @@ First, make sure you have an installation of cloudflared ready for the server ma
 
 
 #### Server Machine
-First, run the server on the server machine by running '/startserver <PORT>' inside the app
-with <PORT> as any available port on your system, if it is not given, <PORT> 
+First, run the server on the server machine by running '/startserver `<PORT>`' inside the app
+with `<PORT>` as any available port on your system, if it is not given, `<PORT>` 
 will default to 8080.
 
 Then run the following command:
 ```sh
 cloudflared tunnel -url tcp://localhost:<PORT>
 ```
-Replace <PORT> with the port that you have used on the '/startserver <PORT>' command.
+Replace `<PORT>` with the port that you have used on the '/startserver `<PORT>`' command.
 
 After running the following command, something similiar to the following will be shown in your terminal:
 ```
@@ -46,6 +46,7 @@ After running the following command, something similiar to the following will be
 In this case, the hostname will be `mrs-done-arthritis-universities.trycloudflare.com`.
 Share that hostname with the users outside your local network. 
 
+---
 
 #### Client Machines
 If the client is on the same local network as the server, simply follow the instruction given by the program.
@@ -54,11 +55,11 @@ Otherwise, on every client machine outside your local network, run:
 ```
 cloudflared access tcp --hostname <HOSTNAME> --url localhost:<LOCALPORT>
 ```
-Replace <HOSTNAME> with the hostname which the server is tunnelled to.
-Replace <LOCALPORT> with any port that is currently free, usually a 4 digit number such as 8080, 6789, and any other port will suffice.
+Replace `<HOSTNAME>` with the hostname which the server is tunnelled to.
+Replace `<LOCALPORT>` with any port that is currently free, usually a 4 digit number such as 8080, 9090, 51234, and any other port will suffice.
 
-After running that command, run '/connect localhost <LOCALPORT>' in the app, 
-where <LOCALPORT> is the same as the one used to run the previous command.
+After running that command, run '/connect localhost `<LOCALPORT>`' in the app, 
+where `<LOCALPORT>` is the same port as the one used to run the previous command.
 
 
 ## Building binaries

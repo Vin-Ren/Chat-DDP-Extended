@@ -357,20 +357,27 @@ class Bot:
         if self.__case_sensitive:
             msg = msg.lower()
         
-        for command in self.__commands:
-            for prefix in command.prefixes:
-                if msg.startswith(prefix):
-                    args = [ctx] + ctx.message.content.split(prefix)[1].split()
-                    if command.is_class_method:
-                        args = [self]+args
-                    if not command.validate_args(*args):
-                        continue
-                    return command(*args)
+        try:
+            for command in self.__commands:
+                for prefix in command.prefixes:
+                    if msg.startswith(prefix):
+                        args = [ctx] + ctx.message.content.split(prefix)[1].split()
+                        if command.is_class_method:
+                            args = [self]+args
+                        if not command.validate_args(*args):
+                            continue
+                        return command(*args)
+        except:
+            traceback.print_exc()
+            return
         
-        args = [ctx] + ctx.message.content.split()
-        if self.__fallback_command.is_class_method:
-            args = [self]+args
-        return self.__fallback_command(*args)
+        try:
+            args = [ctx] + ctx.message.content.split()
+            if self.__fallback_command.is_class_method:
+                args = [self]+args
+            return self.__fallback_command(*args)
+        except:
+            traceback.print_exc()
     
     def reset_state(self):
         "Resets the current state of the bot."

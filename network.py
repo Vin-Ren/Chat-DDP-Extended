@@ -147,7 +147,7 @@ class Server:
                     continue
                 try:
                     self.messenger.send(self.connected_sockets[addr], data)
-                except (OSError, ConnectionResetError, ConnectionAbortedError):
+                except (OSError, ConnectionResetError, ConnectionAbortedError, KeyError):
                     pass
         except:
             traceback.print_exc()
@@ -250,6 +250,7 @@ class Client:
                 last_response = self.messenger.recv(self.socket)
                 ctx.send_message(last_response['message'])
             except DisconnectedError:
+                self.on_disconnect_handler(self)
                 return ctx.send_message(content="Something went wrong :(")
             return response_handler
         
@@ -271,6 +272,7 @@ class Client:
                     self.socket_listener_runner.start()
                     return
             except DisconnectedError:
+                self.on_disconnect_handler(self)
                 return ctx.send_message(content="Something went wrong :(")
             return response_handler
         return initial_response_handler
